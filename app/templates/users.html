@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row" style="justify-content:space-between"><h1>Users</h1>
+<form method="post" action="/users/automap"><button class="ghost">Link users with the same name</button></form></div>
+<p class="muted">A person is one viewer across servers. Watch state syncs between the accounts linked to the same person.</p>
+<div class="card wrap"><h2 style="margin-top:0">People</h2><table>
+<tr><th>Person</th><th>Accounts</th></tr>
+{% for p in persons %}<tr><td>{{ p.name }}</td><td>
+  {% for a in accounts if a.person_id == p.id %}<span class="pill">{{ a.server }}: {{ a.jf_user_name }}
+    <form class="inline" method="post" action="/users/unlink/{{ a.id }}"><button class="tiny ghost" title="Unlink">×</button></form></span> {% endfor %}
+</td></tr>{% else %}<tr><td colspan="2" class="muted">Nobody yet.</td></tr>{% endfor %}
+</table></div>
+{% for srv, us in per_server %}
+<div class="card wrap"><h2 style="margin-top:0">{{ srv.name }}</h2>
+{% if srv.error %}<p class="bad">{{ srv.error }}</p>{% endif %}
+<table>{% for u in us %}<tr><td>{{ u.Name }}</td><td>
+  {% set a = linked.get((srv.id, u.Id)) %}
+  {% if a %}<span class="ok">linked</span>{% else %}
+  <form method="post" action="/users/link" class="row">
+    <input type="hidden" name="server_id" value="{{ srv.id }}"><input type="hidden" name="jf_user_id" value="{{ u.Id }}">
+    <input type="hidden" name="jf_user_name" value="{{ u.Name }}">
+    <select name="person_id" style="width:auto">{% for p in persons %}<option value="{{ p.id }}">{{ p.name }}</option>{% endfor %}<option value="new">new person…</option></select>
+    <input name="new_person" placeholder="name for a new person" style="width:200px"><button class="tiny">Link</button>
+  </form>{% endif %}
+</td></tr>{% endfor %}</table></div>
+{% endfor %}
+{% endblock %}

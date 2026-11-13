@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Preview: {{ rule.title }} → {{ t.server }}</h1>
+<p class="muted">What a sync would do now. Nothing has been changed.</p>
+{% for w in p.warnings %}<p class="warn">{{ w }}</p>{% endfor %}
+<div class="card"><p>{{ p.ok }} file(s) in sync · {{ p.copies | length }} to copy · {{ p.deletes | length }} to delete · {{ p.adopt | length }} already there</p>
+{% if p.mass_delete %}<p class="bad">That many deletes would be held back until you confirm them.</p>{% endif %}</div>
+{% if p.copies %}<div class="card wrap"><h2 style="margin-top:0">Copy</h2><table><tr><th>From</th><th>To</th><th>Size</th></tr>
+{% for c in p.copies %}<tr><td class="path">{{ c.src }}</td><td class="path">{{ c.dest }}{% if c.replace %} <span class="warn">(replaces)</span>{% endif %}</td><td>{{ c.size | size }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if p.deletes %}<div class="card wrap"><h2 style="margin-top:0">Delete</h2><table>{% for d in p.deletes %}<tr><td class="path">{{ d.dest }}</td></tr>{% endfor %}</table></div>{% endif %}
+{% if p.adopt %}<div class="card wrap"><h2 style="margin-top:0">Already on the target (kept, never deleted)</h2><table>{% for d in p.adopt %}<tr><td class="path">{{ d }}</td></tr>{% endfor %}</table></div>{% endif %}
+<a class="btn" href="/rules/{{ rule.id }}">Back</a>
+{% endblock %}

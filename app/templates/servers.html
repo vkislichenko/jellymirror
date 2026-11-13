@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row" style="justify-content:space-between"><h1>Servers</h1><a class="btn" href="/servers/new">Add server</a></div>
+<div class="card wrap"><table>
+<tr><th>Name</th><th>URL</th><th>File access</th><th>Path maps</th><th>Status</th></tr>
+{% for s in servers %}<tr>
+  <td><a href="/servers/{{ s.id }}/edit">{{ s.name }}</a>{% if not s.enabled %} <span class="muted">(disabled)</span>{% endif %}</td>
+  <td class="path">{{ s.url }}</td>
+  <td>{{ s.access }}{% if s.access == 'ssh' %} <span class="muted small">{{ s.ssh_user }}@{{ s.ssh_host }}:{{ s.ssh_port }}</span>{% endif %}</td>
+  <td class="path">{% for a, b in s.path_maps %}{{ a }} → {{ b }}<br>{% endfor %}</td>
+  <td class="{{ 'ok' if s.status == 'ok' else 'bad' if s.status }}">{{ s.status or '—' }} <a class="small" href="/servers/{{ s.id }}/test">test</a></td>
+</tr>{% else %}<tr><td colspan="5" class="muted">No servers yet.</td></tr>{% endfor %}
+</table></div>
+<div class="card"><h2 style="margin-top:0">SSH public key</h2>
+<p class="muted">Add this to <code>~/.ssh/authorized_keys</code> of the user on each server with ssh access. That host needs rsync installed.</p>
+<pre>{{ pubkey }}</pre></div>
+{% endblock %}

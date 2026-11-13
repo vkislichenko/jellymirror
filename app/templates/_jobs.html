@@ -1,0 +1,20 @@
+<div class="wrap"><table>
+<tr><th>Status</th><th>Title</th><th>Target</th><th>File</th><th>Progress</th><th></th></tr>
+{% for j in jobs %}
+<tr>
+  <td><span class="pill {{ j.status }}">{{ j.status }}</span>{% if j.method %} <span class="muted small">{{ j.method }}</span>{% endif %}</td>
+  <td>{{ j.title }}</td>
+  <td>{{ j.server }}</td>
+  <td><span class="muted small">{{ j.kind }}</span> <span class="path">{{ j.dest_path }}</span>
+      {% if j.error %}<div class="bad small">{{ j.error }}</div>{% endif %}</td>
+  <td style="min-width:120px">{% if j.kind == 'copy' and j.size %}
+      <div class="bar"><i style="width:{{ (100 * j.progress / j.size) | round(1) if j.size else 0 }}%"></i></div>
+      <span class="small muted">{{ j.progress | size }} / {{ j.size | size }}</span>{% endif %}</td>
+  <td class="row">
+    {% if j.status in ('queued', 'running') %}<form class="inline" method="post" action="/jobs/{{ j.id }}/pause"><button class="tiny ghost">Pause</button></form>{% endif %}
+    {% if j.status in ('paused', 'failed', 'cancelled') %}<form class="inline" method="post" action="/jobs/{{ j.id }}/resume"><button class="tiny ghost">{{ 'Resume' if j.status == 'paused' else 'Retry' }}</button></form>{% endif %}
+    {% if j.status in ('queued', 'running', 'paused', 'failed') %}<form class="inline" method="post" action="/jobs/{{ j.id }}/cancel"><button class="tiny danger">Cancel</button></form>{% endif %}
+  </td>
+</tr>
+{% else %}<tr><td colspan="6" class="muted">No jobs.</td></tr>{% endfor %}
+</table></div>

@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Log</h1>
+<div class="row" style="margin-bottom:12px">{% for l in ['', 'info', 'warn', 'error'] %}<a class="btn {{ '' if level == l else 'ghost' }}" href="/log?level={{ l }}">{{ l or 'all' }}</a>{% endfor %}</div>
+<div class="card wrap"><table>{% for l in rows %}<tr><td class="muted small" style="white-space:nowrap">{{ l.at | when }}</td>
+<td class="{{ 'bad' if l.level == 'error' else 'warn' if l.level == 'warn' }}">{{ l.msg }}</td></tr>{% endfor %}</table></div>
+{% endblock %}

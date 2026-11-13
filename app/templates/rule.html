@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block head %}{% if jobs | selectattr('status', 'in', ['running', 'queued']) | list %}<meta http-equiv="refresh" content="10">{% endif %}{% endblock %}
+{% block body %}
+<div class="row" style="justify-content:space-between">
+  <h1>{{ rule.title }} <span class="muted">{{ rule.year or '' }} · {{ rule.item_type }}</span>{% if not rule.enabled %} <span class="warn">(paused)</span>{% endif %}</h1>
+  <div class="row">
+    <form method="post" action="/rules/{{ rule.id }}/sync"><button>Sync now</button></form>
+    <form method="post" action="/rules/{{ rule.id }}/toggle"><button class="ghost">{{ 'Pause' if rule.enabled else 'Enable' }}</button></form>
+  </div>
+</div>
+<p class="muted">Source: <b>{{ rule.source }}</b> · {% for k, v in rule.provider_ids.items() %}{{ k }}:{{ v }} {% endfor %}</p>
+
+<h2>Targets</h2>
+{% for t in targets %}
+<div class="card">
+  <div class="row" style="justify-content:space-between">
+    <b>{{ t.server }}</b>
+    <div class="row">
+      {% if t.sync_files %}<a class="btn ghost" href="/rules/{{ rule.id }}/target/{{ t.id }}/preview">Preview</a>{% endif %}
+      <a class="btn ghost" href="/rules/{{ rule.id }}?edit={{ t.id }}#form">Edit</a>
+      <form method="post" action="/rules/{{ rule.id }}/target/{{ t.id }}/delete" onsubmit="return confirm('Stop syncing to {{ t.server }}? Copied files stay there.')"><button class="danger">Remove</button></form>
+    </div>
+  </div>
+  <table>
+    <tr><td class="muted" style="width:170px">Files</td><td>{% if t.sync_files %}into <span class="path">{{ t.root }}</span> · {{ t.method }} · delay {{ t.delay_seconds }}s{% if t.bwlimit_kbps %} · limit {{ t.bwlimit_kbps }} KB/s{% endif %}{% else %}not synced (watch state only){% endif %}</td></tr>
+    {% if t.sync_files %}<tr><td class="muted">Template</td><td><code>{{ t.template or default_template }}</code></td></tr>{% endif %}
+    <tr><td class="muted">Title on {{ t.server }}</td><td>{{ 'matched' if t.matched_item_id else 'not found yet (appears after the first copy and scan)' }}</td></tr>
+    {% if t.sync_files %}<tr><td class="muted">Copied</td><td>{{ t.placed.n }} file(s){% if t.placed.bytes %}, {{ t.placed.bytes | size }}{% endif %}</td></tr>{% endif %}
+    <tr><td class="muted">Last check</td><td>{{ t.last_eval | ago }} {{ t.last_result or '' }}{% if t.due_at %} <span class="muted">· next run {{ t.due_at | when }}</span>{% endif %}</td></tr>
+  </table>
+  {% if t.last_result and 'held back' in t.last_result %}
+  <form method="post" action="/rules/{{ rule.id }}/target/{{ t.id }}/confirm-deletes" onsubmit="return confirm('Delete those files on {{ t.server }}?')"><button class="danger">Confirm deletes</button></form>{% endif %}
+</div>
+{% else %}<p class="muted">No targets yet.</p>{% endfor %}
+
+{% if editing or free %}
+<form id="form" method="post" action="/rules/{{ rule.id }}/target" class="card">
+  <h2 style="margin-top:0">{{ 'Edit target ' + editing.server if editing else 'Add target' }}</h2>
+  {% if editing %}<input type="hidden" name="target_id" value="{{ editing.id }}">{% else %}
+  <label>Server</label><select name="server_id" id="srv">{% for s in free %}<option value="{{ s.id }}">{{ s.name }} ({{ s.access }})</option>{% endfor %}</select>{% endif %}
+  <p><label class="inline"><input type="checkbox" name="sync_files" {{ 'checked' if not editing or editing.sync_files }}> Copy files (off: only sync watch state for a title the server already has)</label></p>
+  <label>Target folder (a library folder on that server, as Jellyfin sees it)</label>
+  <input name="root" list="roots" value="{{ editing.root if editing and editing.root else '' }}" placeholder="/media/tv">
+  <datalist id="roots">{% for sid, lib, loc in roots %}<option value="{{ loc }}">{{ lib }}</option>{% endfor %}</datalist>
+  <label>Path template (empty: default <code>{{ default_template }}</code>)</label>
+  <input name="template" value="{{ editing.template if editing and editing.template else '' }}" placeholder="{{ default_template }}">
+  <p class="small muted">Variables: {title} {year} {tvdb} {tmdb} {imdb} {season:02} {episode:02} {episode_end:02} {episode_title} {filename} {stem} {ext} {rel} (path inside the title's folder on the source)</p>
+  <div class="grid">
+    <div><label>Transfer</label><select name="method">
+      {% for m, d in [('auto', 'auto (rsync with file access, else API)'), ('rsync', 'rsync (local or ssh)'), ('api', 'Jellyfin API download')] %}
+      <option value="{{ m }}" {{ 'selected' if editing and editing.method == m }}>{{ d }}</option>{% endfor %}</select></div>
+    <div><label>Delay after new media (seconds)</label><input type="number" name="delay_seconds" value="{{ editing.delay_seconds if editing else 300 }}"></div>
+    <div><label>Bandwidth limit (KB/s, 0 = none)</label><input type="number" name="bwlimit_kbps" value="{{ editing.bwlimit_kbps if editing else 0 }}"></div>
+  </div>
+  <p class="row"><button>{{ 'Save' if editing else 'Add target' }}</button>{% if editing %}<a class="btn ghost" href="/rules/{{ rule.id }}">Cancel</a>{% endif %}</p>
+</form>
+{% endif %}
+
+<h2>Watch state</h2>
+<form method="post" action="/rules/{{ rule.id }}/users" class="card">
+  <p><label class="inline"><input type="checkbox" name="sync_watch" {{ 'checked' if rule.sync_watch }}> Sync watched state, progress and favorites for this title</label></p>
+  <p class="muted small">People (none ticked = everyone linked on the <a href="/users">Users</a> page):</p>
+  <p>{% for p in persons %}<label class="inline"><input type="checkbox" name="person" value="{{ p.id }}" {{ 'checked' if p.id in chosen }}> {{ p.name }}</label>{% else %}<span class="muted">No people linked yet.</span>{% endfor %}</p>
+  <button>Save</button>
+</form>
+
+<h2>Jobs</h2>
+<div class="card">{% include "_jobs.html" %}</div>
+
+<form method="post" action="/rules/{{ rule.id }}/delete" onsubmit="return confirm('Stop syncing {{ rule.title }}? Copied files stay on the targets.')"><button class="danger">Remove title</button></form>
+{% endblock %}

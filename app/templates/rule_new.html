@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Add a title</h1>
+<form class="card row" method="get" action="/rules/new">
+  <select name="server_id" style="width:auto">{% for s in servers %}<option value="{{ s.id }}" {{ 'selected' if s.id == server_id }}>{{ s.name }}</option>{% endfor %}</select>
+  <input name="q" value="{{ q }}" placeholder="Search series or movies on the source server" style="flex:1; min-width:200px" autofocus>
+  <button>Search</button>
+</form>
+{% if error %}<p class="bad">{{ error }}</p>{% endif %}
+{% if results %}<div class="card wrap"><table>
+<tr><th>Title</th><th>Type</th><th>IDs</th><th>Path</th><th></th></tr>
+{% for it in results %}<tr>
+  <td>{{ it.Name }} <span class="muted">{{ it.ProductionYear or '' }}</span></td><td>{{ it.Type }}</td>
+  <td class="small muted">{% for k, v in (it.ProviderIds or {}).items() %}{{ k }}:{{ v }} {% endfor %}</td>
+  <td class="path muted">{{ it.Path or '' }}</td>
+  <td>{% if (server_id, it.Id) in existing %}<span class="muted">added</span>{% else %}
+    <form method="post" action="/rules/create"><input type="hidden" name="server_id" value="{{ server_id }}">
+    <input type="hidden" name="item_id" value="{{ it.Id }}"><button class="tiny">Use as source</button></form>{% endif %}</td>
+</tr>{% endfor %}</table></div>
+{% elif q %}<p class="muted">Nothing found.</p>{% endif %}
+{% endblock %}

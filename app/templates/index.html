@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block head %}<meta http-equiv="refresh" content="10">{% endblock %}
+{% block body %}
+<h1>Overview</h1>
+<div class="grid">
+  <div class="card"><div class="muted small">Titles synced</div><div style="font-size:24px">{{ rules }}</div></div>
+  <div class="card"><div class="muted small">Jobs running / queued</div><div style="font-size:24px">{{ counts.get('running', 0) }} / {{ counts.get('queued', 0) }}</div></div>
+  <div class="card"><div class="muted small">Paused / failed</div><div style="font-size:24px">{{ counts.get('paused', 0) }} / <span class="{{ 'bad' if counts.get('failed') }}">{{ counts.get('failed', 0) }}</span></div></div>
+</div>
+<div class="card">
+  <h2 style="margin-top:0">Servers</h2>
+  <table><tr><th>Name</th><th>Files</th><th>Status</th></tr>
+  {% for s in servers %}<tr><td><a href="/servers/{{ s.id }}/edit">{{ s.name }}</a>{% if not s.enabled %} <span class="muted">(disabled)</span>{% endif %}</td>
+    <td>{{ s.access }}</td><td class="{{ 'ok' if s.status == 'ok' else 'bad' if s.status }}">{{ s.status or '—' }} <span class="muted small">{{ s.status_at | ago }}</span></td></tr>
+  {% else %}<tr><td colspan="3" class="muted">No servers yet. <a href="/servers/new">Add one</a>.</td></tr>{% endfor %}
+  </table>
+</div>
+<div class="card">
+  <div class="row" style="justify-content:space-between"><h2 style="margin:0">Active jobs</h2>
+  <form method="post" action="/reconcile"><button class="ghost">Check everything now</button></form></div>
+  {% with jobs=active %}{% include "_jobs.html" %}{% endwith %}
+</div>
+<div class="card"><h2 style="margin-top:0">Recent activity</h2>
+  <table>{% for l in log %}<tr><td class="muted small" style="white-space:nowrap">{{ l.at | when }}</td><td class="{{ 'bad' if l.level == 'error' else 'warn' if l.level == 'warn' }}">{{ l.msg }}</td></tr>{% endfor %}</table>
+  <a href="/log">Full log</a>
+</div>
+{% endblock %}

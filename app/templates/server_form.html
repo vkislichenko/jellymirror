@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>{{ 'Edit ' + s.name if s.id else 'Add server' }}</h1>
+<form method="post" action="/servers/save" class="card">
+  {% if s.id %}<input type="hidden" name="id" value="{{ s.id }}">{% endif %}
+  <div class="grid">
+    <div><label>Name</label><input name="name" required value="{{ s.name or '' }}" placeholder="home"></div>
+    <div><label>Jellyfin URL</label><input name="url" required value="{{ s.url or '' }}" placeholder="https://jellyfin.example.org"></div>
+    <div><label>API key (admin: Dashboard → API Keys)</label><input name="api_key" required value="{{ s.api_key or '' }}"></div>
+  </div>
+  <label>File access — how jellymirror reaches this server's media files</label>
+  <select name="access" onchange="document.getElementById('ssh').style.display = this.value == 'ssh' ? '' : 'none'">
+    <option value="none" {{ 'selected' if s.access == 'none' }}>none — API only (can be a source over the API, cannot receive files)</option>
+    <option value="local" {{ 'selected' if s.access == 'local' }}>local — the media is mounted into the jellymirror container</option>
+    <option value="ssh" {{ 'selected' if s.access == 'ssh' }}>ssh — the media is on a host jellymirror can ssh into (needs rsync there)</option>
+  </select>
+  <div id="ssh" class="grid" style="{{ '' if s.access == 'ssh' else 'display:none' }}">
+    <div><label>SSH host</label><input name="ssh_host" value="{{ s.ssh_host or '' }}"></div>
+    <div><label>SSH port</label><input name="ssh_port" type="number" value="{{ s.ssh_port or 22 }}"></div>
+    <div><label>SSH user</label><input name="ssh_user" value="{{ s.ssh_user or '' }}"></div>
+  </div>
+  <label>Path maps — one per line: <code>path as Jellyfin sees it = path for jellymirror</code> (local: inside this container; ssh: on the host)</label>
+  <textarea name="path_maps" rows="4" placeholder="/media = /mnt/speed/media">{% for a, b in s.path_maps %}{{ a }} = {{ b }}
+{% endfor %}</textarea>
+  <p><label class="inline"><input type="checkbox" name="enabled" {{ 'checked' if s.enabled }}> Enabled</label></p>
+  <div class="row"><button>Save and test</button><a class="btn ghost" href="/servers">Cancel</a></div>
+</form>
+{% if s.access == 'ssh' or not s.id %}<div class="card"><h2 style="margin-top:0">SSH public key</h2><pre>{{ pubkey }}</pre></div>{% endif %}
+{% if s.id %}<form method="post" action="/servers/{{ s.id }}/delete" onsubmit="return confirm('Remove {{ s.name }} and every rule and target that uses it? Files stay where they are.')">
+  <button class="danger">Remove server</button></form>{% endif %}
+{% endblock %}

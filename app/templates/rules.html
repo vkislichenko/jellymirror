@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="row" style="justify-content:space-between"><h1>Titles</h1><a class="btn" href="/rules/new">Add title</a></div>
+<div class="card wrap"><table>
+<tr><th>Title</th><th>Source</th><th>Targets</th><th>Watch sync</th></tr>
+{% for r in rules %}<tr>
+  <td><a href="/rules/{{ r.id }}">{{ r.title }}</a> <span class="muted">{{ r.year or '' }} · {{ r.item_type }}</span>{% if not r.enabled %} <span class="warn">(paused)</span>{% endif %}</td>
+  <td>{{ r.source }}</td>
+  <td>{% for t in r.targets %}<span class="pill">{{ t.server }}{{ '' if t.sync_files else ' · watch only' }}</span> {% else %}<span class="muted">none</span>{% endfor %}</td>
+  <td>{{ 'on' if r.sync_watch else 'off' }}</td>
+</tr>{% else %}<tr><td colspan="4" class="muted">No titles yet.</td></tr>{% endfor %}
+</table></div>
+{% endblock %}

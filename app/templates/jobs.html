@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block head %}<meta http-equiv="refresh" content="10">{% endblock %}
+{% block body %}
+<h1>Jobs</h1>
+<div class="row" style="margin-bottom:12px">
+  {% for s in ['', 'running', 'queued', 'paused', 'failed', 'done'] %}<a class="btn {{ '' if status == s else 'ghost' }}" href="/jobs?status={{ s }}">{{ s or 'all' }}</a>{% endfor %}
+  <span style="flex:1"></span>
+  {% for a, l in [('pause-all', 'Pause all'), ('resume-all', 'Resume all'), ('retry-failed', 'Retry failed'), ('clear', 'Clear finished')] %}
+  <form class="inline" method="post" action="/jobs-bulk/{{ a }}"><button class="ghost">{{ l }}</button></form>{% endfor %}
+</div>
+<div class="card">{% include "_jobs.html" %}</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block body %}
+<h1>Test: {{ s.name }}</h1>
+<div class="card"><table>
+{% for name, ok, detail in checks %}<tr><td>{{ name }}</td>
+  <td class="{{ 'ok' if ok else 'muted' if ok is none else 'bad' }}">{{ '✓' if ok else '–' if ok is none else '✗' }}</td>
+  <td class="path">{{ detail }}</td></tr>{% endfor %}
+</table></div>
+<div class="row"><a class="btn" href="/servers">Done</a><a class="btn ghost" href="/servers/{{ s.id }}/edit">Edit</a></div>
+{% endblock %}
