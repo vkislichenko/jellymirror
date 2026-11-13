@@ -5,6 +5,7 @@ import os
 import secrets
 import shlex
 import time
+from urllib.parse import urlencode
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -19,7 +20,10 @@ templates.env.filters["ago"] = lambda ts: "" if not ts else (
     f"{int(time.time() - ts)}s ago" if time.time() - ts < 120 else
     f"{int((time.time() - ts) / 60)}m ago" if time.time() - ts < 7200 else
     time.strftime("%Y-%m-%d %H:%M", time.localtime(ts)))
+templates.env.globals["qs"] = lambda base, **kw: "?" + urlencode({k: v for k, v in {**base, **kw}.items()
+                                                                  if v not in (None, "", 0)})
 templates.env.filters["when"] = lambda ts: "" if not ts else time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
+templates.env.filters["mbps"] = lambda k: 0 if not k else round(k * 1024 * 8 / 1e6, 1)   # KiB/s -> Mbit/s
 templates.env.filters["size"] = lambda n: "" if n is None else next(
     f"{n / 1024 ** i:.1f} {u}" for i, u in reversed(list(enumerate(["B", "KB", "MB", "GB", "TB"]))) if n >= 1024 ** i or i == 0)
 
@@ -97,19 +101,25 @@ def _parse_maps(text):
     return maps
 
 
+def _kbps(mbps):
+    """Mbit/s from a form -> KiB/s, the unit rsync's --bwlimit takes."""
+    return max(0, round((mbps or 0) * 1e6 / 8 / 1024))
+
+
 @app.post("/servers/save")
 async def server_save(id: int = Form(None), name: str = Form(...), url: str = Form(...),
                       api_key: str = Form(...), access: str = Form("none"), ssh_host: str = Form(""),
                       ssh_port: int = Form(22), ssh_user: str = Form(""), path_maps: str = Form(""),
-                      enabled: str = Form(None)):
+                      enabled: str = Form(None), up_mbps: float = Form(0), down_mbps: float = Form(0)):
     vals = (name.strip(), url.strip().rstrip("/"), api_key.strip(), access, ssh_host.strip() or None,
-            ssh_port, ssh_user.strip() or None, json.dumps(_parse_maps(path_maps)), 1 if enabled else 0)
+            ssh_port, ssh_user.strip() or None, json.dumps(_parse_maps(path_maps)), 1 if enabled else 0,
+            _kbps(up_mbps), _kbps(down_mbps))
     if id:
         db.x("UPDATE servers SET name=?, url=?, api_key=?, access=?, ssh_host=?, ssh_port=?, ssh_user=?, "
-             "path_maps=?, enabled=? WHERE id=?", vals + (id,))
+             "path_maps=?, enabled=?, up_kbps=?, down_kbps=? WHERE id=?", vals + (id,))
     else:
         id = db.x("INSERT INTO servers(name, url, api_key, access, ssh_host, ssh_port, ssh_user, path_maps, "
-                  "enabled) VALUES (?,?,?,?,?,?,?,?,?)", vals)
+                  "enabled, up_kbps, down_kbps) VALUES (?,?,?,?,?,?,?,?,?,?,?)", vals)
     return back(f"/servers/{id}/test")
 
 
@@ -222,17 +232,52 @@ async def rules(request: Request):
     return page(request, "rules.html", rules=rows)
 
 
+BROWSE_PAGE = 60
+BROWSE_LIBS = (None, "tvshows", "movies", "mixed", "homevideos")
+
+
 @app.get("/rules/new", response_class=HTMLResponse)
-async def rule_new(request: Request, server_id: int = None, q: str = ""):
-    results, error = [], None
-    if server_id and q.strip():
+async def rule_new(request: Request, server_id: int = None, q: str = "", parent: str = "", kind: str = "",
+                   letter: str = "", p: int = 0):
+    """Title picker. Without a parent or filter: the server's libraries. Inside a library or
+    folder: its direct children (folders open, titles can be picked). With a name, letter or
+    type filter: every matching title under the current parent."""
+    servers = db.servers(enabled_only=True)
+    if server_id is None and servers:
+        server_id = servers[0]["id"]
+    results, total, libs, crumbs, error = [], 0, [], [], None
+    filtered = bool(q.strip() or letter or kind in ("Series", "Movie"))
+    types = kind if kind in ("Series", "Movie") else "Series,Movie"
+    p = max(p, 0)
+    if server_id:
+        jf = Jellyfin(db.server(server_id))
         try:
-            results = await Jellyfin(db.server(server_id)).search(q.strip())
+            libs = [l for l in await jf.libraries() if l.get("CollectionType") in BROWSE_LIBS]
+            if parent:
+                crumbs = list(reversed(await jf.ancestry(parent, await jf.libraries())))
+            if parent or filtered:
+                results, total = await jf.browse(parent or None, types if filtered else types + ",Folder",
+                                                 q.strip() or None, letter or None, p * BROWSE_PAGE,
+                                                 BROWSE_PAGE, recursive=filtered)
         except Exception as e:
             error = str(e)
-    existing = {(r["source_server_id"], r["source_item_id"]) for r in db.q("SELECT * FROM rules")}
-    return page(request, "rule_new.html", servers=db.servers(enabled_only=True), server_id=server_id, q=q,
-                results=results, error=error, existing=existing)
+    existing = {(r["source_server_id"], r["source_item_id"]): r["id"] for r in db.q("SELECT * FROM rules")}
+    pages = (total + BROWSE_PAGE - 1) // BROWSE_PAGE
+    state = dict(server_id=server_id, q=q, parent=parent, kind=kind, letter=letter)
+    return page(request, "rule_new.html", servers=servers, libs=libs, results=results, total=total, p=p,
+                pages=pages, error=error, existing=existing, state=state, crumbs=crumbs, filtered=filtered,
+                letters="#ABCDEFGHIJKLMNOPQRSTUVWXYZ", **state)
+
+
+@app.get("/img/{server_id}/{item_id}")
+async def item_image(server_id: int, item_id: str, tag: str = ""):
+    """Item art proxied through jellymirror, so the browser needs neither the server's
+    address nor its API key. `tag` only busts the browser cache when the art changes."""
+    srv = db.server(server_id)
+    got = await Jellyfin(srv, timeout=15).image(item_id) if srv else None
+    if not got:
+        return Response(status_code=404)
+    return Response(got[0], media_type=got[1], headers={"Cache-Control": "private, max-age=604800"})
 
 
 @app.post("/rules/create")
@@ -282,7 +327,8 @@ async def rule_page(request: Request, rid: int, edit: int = None):
 @app.post("/rules/{rid}/target")
 async def target_save(rid: int, target_id: int = Form(None), server_id: int = Form(None),
                       sync_files: str = Form(None), root: str = Form(""), template: str = Form(""),
-                      method: str = Form("auto"), delay_seconds: int = Form(300), bwlimit_kbps: int = Form(0)):
+                      method: str = Form("auto"), delay_seconds: int = Form(300), bw_mbps: float = Form(0)):
+    bwlimit_kbps = _kbps(bw_mbps)
     vals = (1 if sync_files else 0, root.strip().rstrip("/") or None, template.strip() or None, method,
             delay_seconds, bwlimit_kbps)
     if target_id:

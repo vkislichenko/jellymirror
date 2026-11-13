@@ -24,6 +24,7 @@ STAGING = os.environ.get("JM_STAGING", os.path.join(db.DATA_DIR, "staging"))
 PROGRESS_RE = re.compile(r"^\s*([\d,]+)\s+(\d+)%")
 
 _tasks: dict[int, asyncio.Task] = {}
+_copying: dict[int, tuple[int, int]] = {}   # running copy job_id -> (source server id, target server id)
 _refresh: dict[int, set] = {}        # target_id -> {(jellyfin_path, update_type)}
 
 
@@ -132,7 +133,28 @@ def resolve_method(method, src, dst):
     return method
 
 
+def limit_kbps(job_id, tgt, src, dst):
+    """This copy's speed limit in KiB/s (0 = none): the target's own limit, and its share of
+    the source server's upload limit and of the target server's download limit, which are
+    split evenly between the copies running on that server right now."""
+    caps = [tgt["bwlimit_kbps"] or 0]
+    if src.get("up_kbps"):
+        caps.append(src["up_kbps"] // max(1, sum(1 for s, _ in _copying.values() if s == src["id"])))
+    if dst.get("down_kbps"):
+        caps.append(dst["down_kbps"] // max(1, sum(1 for _, d in _copying.values() if d == dst["id"])))
+    caps = [max(1, c) for c in caps if c]
+    return min(caps) if caps else 0
+
+
 async def _copy(job, tgt, src, dst):
+    _copying[job["id"]] = (src["id"], dst["id"])
+    try:
+        await _copy_inner(job, tgt, src, dst)
+    finally:
+        _copying.pop(job["id"], None)
+
+
+async def _copy_inner(job, tgt, src, dst):
     method = resolve_method(job["method"] or tgt["method"], src, dst)
     db.x("UPDATE jobs SET method=? WHERE id=?", (method, job["id"]))
     dst_files = Files(dst)
@@ -159,11 +181,12 @@ async def _copy(job, tgt, src, dst):
     _refresh.setdefault(tgt["id"], set()).add((posixpath.dirname(job["dest_path"]), "Created"))
 
 
-def _rsync_args(tgt):
+def _rsync_args(limit):
+    """rsync's limit is fixed for the run: set from the share when the copy starts."""
     args = ["rsync", "-t", "-s", "--partial", f"--partial-dir={PARTIAL_DIR}",
             "--info=progress2", "--no-inc-recursive"]
-    if tgt["bwlimit_kbps"]:
-        args.append(f"--bwlimit={tgt['bwlimit_kbps']}")
+    if limit:
+        args.append(f"--bwlimit={limit}")
     return args
 
 
@@ -201,7 +224,7 @@ async def _rsync(job_id, args, offset=0):
 
 
 async def _rsync_copy(job, tgt, src, dst, src_fs, dest_fs):
-    base = _rsync_args(tgt)
+    base = _rsync_args(limit_kbps(job["id"], tgt, src, dst))
     if src["access"] == "ssh" and dst["access"] == "ssh":
         # rsync cannot copy between two remotes: relay through local staging (both legs resumable)
         stage = os.path.join(STAGING, str(job["id"]))
@@ -238,14 +261,18 @@ async def _api_copy(job, tgt, src, dst_files, dest_fs):
                     m = re.match(r"bytes (\d+)-", r.headers.get("content-range", ""))
                     if r.status_code != 206 or not m or int(m.group(1)) != offset:
                         offset = 0            # range ignored or answered from elsewhere: start over
-                await _write_stream(job, tgt, dst_files, part, r, offset)
+                await _write_stream(job, lambda: limit_kbps(job["id"], tgt, src, dst), dst_files, part, r,
+                                    offset)
     await dst_files.rename(part, dest_fs)
     await dst_files.prune_dirs(part_dir, posixpath.dirname(d))
 
 
-async def _write_stream(job, tgt, files, part, resp, offset):
-    limit = (tgt["bwlimit_kbps"] or 0) * 1024
-    done, started, last = offset, time.time(), 0.0
+async def _write_stream(job, get_limit, files, part, resp, offset):
+    """get_limit() is re-read every second, so the share follows other copies starting and
+    finishing. Throttling paces reading, so it limits both the download and the upload."""
+    limit = get_limit() * 1024
+    done, last = offset, 0.0
+    window_t, window_b = time.time(), 0
     if files.kind == "local":
         f = open(part, "ab" if offset else "wb")
         write = lambda b: f.write(b)
@@ -264,11 +291,15 @@ async def _write_stream(job, tgt, files, part, resp, offset):
             if proc:
                 await proc.stdin.drain()
             done += len(chunk)
+            window_b += len(chunk)
             if time.time() - last > 1:
                 last = time.time()
                 _progress(job["id"], done)
+                new = get_limit() * 1024
+                if new != limit:
+                    limit, window_t, window_b = new, time.time(), 0
             if limit:
-                ahead = (done - offset) / limit - (time.time() - started)
+                ahead = window_b / limit - (time.time() - window_t)
                 if ahead > 0:
                     await asyncio.sleep(ahead)
         _progress(job["id"], done)

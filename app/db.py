@@ -127,6 +127,10 @@ def _migrate():
     cols = {r[1] for r in _conn.execute("PRAGMA table_info(rules)")}
     if "src_sig" not in cols:
         _conn.execute("ALTER TABLE rules ADD COLUMN src_sig TEXT")
+    cols = {r[1] for r in _conn.execute("PRAGMA table_info(servers)")}
+    for c in ("up_kbps", "down_kbps"):     # server-wide speed limits, 0 = unlimited
+        if c not in cols:
+            _conn.execute(f"ALTER TABLE servers ADD COLUMN {c} INTEGER NOT NULL DEFAULT 0")
 
 
 def q(sql, args=()):

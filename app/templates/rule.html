@@ -22,7 +22,7 @@
     </div>
   </div>
   <table>
-    <tr><td class="muted" style="width:170px">Files</td><td>{% if t.sync_files %}into <span class="path">{{ t.root }}</span> · {{ t.method }} · delay {{ t.delay_seconds }}s{% if t.bwlimit_kbps %} · limit {{ t.bwlimit_kbps }} KB/s{% endif %}{% else %}not synced (watch state only){% endif %}</td></tr>
+    <tr><td class="muted" style="width:170px">Files</td><td>{% if t.sync_files %}into <span class="path">{{ t.root }}</span> · {{ t.method }} · delay {{ t.delay_seconds }}s{% if t.bwlimit_kbps %} · limit {{ t.bwlimit_kbps | mbps }} Mbit/s{% endif %}{% else %}not synced (watch state only){% endif %}</td></tr>
     {% if t.sync_files %}<tr><td class="muted">Template</td><td><code>{{ t.template or default_template }}</code></td></tr>{% endif %}
     <tr><td class="muted">Title on {{ t.server }}</td><td>{{ 'matched' if t.matched_item_id else 'not found yet (appears after the first copy and scan)' }}</td></tr>
     {% if t.sync_files %}<tr><td class="muted">Copied</td><td>{{ t.placed.n }} file(s){% if t.placed.bytes %}, {{ t.placed.bytes | size }}{% endif %}</td></tr>{% endif %}
@@ -50,7 +50,7 @@
       {% for m, d in [('auto', 'auto (rsync with file access, else API)'), ('rsync', 'rsync (local or ssh)'), ('api', 'Jellyfin API download')] %}
       <option value="{{ m }}" {{ 'selected' if editing and editing.method == m }}>{{ d }}</option>{% endfor %}</select></div>
     <div><label>Delay after new media (seconds)</label><input type="number" name="delay_seconds" value="{{ editing.delay_seconds if editing else 300 }}"></div>
-    <div><label>Bandwidth limit (KB/s, 0 = none)</label><input type="number" name="bwlimit_kbps" value="{{ editing.bwlimit_kbps if editing else 0 }}"></div>
+    <div><label>Speed limit, Mbit/s (0 = only the servers' limits)</label><input type="number" min="0" step="any" name="bw_mbps" value="{{ (editing.bwlimit_kbps if editing else 0) | mbps }}"></div>
   </div>
   <p class="row"><button>{{ 'Save' if editing else 'Add target' }}</button>{% if editing %}<a class="btn ghost" href="/rules/{{ rule.id }}">Cancel</a>{% endif %}</p>
 </form>

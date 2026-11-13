@@ -90,6 +90,54 @@ class Jellyfin:
                            Fields=FIELDS, Limit=limit, EnableImages="false")
         return d.get("Items") or []
 
+    async def browse(self, parent_id=None, types="Series,Movie", term=None, letter=None, start=0, limit=50,
+                     recursive=True):
+        """One page of items sorted by name, optionally under one parent (library or folder).
+        recursive=False lists only the parent's direct children, folders included.
+        Returns (items, total)."""
+        params = dict(IncludeItemTypes=types, Recursive="true" if recursive else "false", Fields=FIELDS,
+                      EnableImageTypes="Primary", ImageTypeLimit=1, SortBy="IsFolder,SortName",
+                      SortOrder="Ascending", StartIndex=start, Limit=limit, ParentId=parent_id or None,
+                      searchTerm=term or None)
+        if letter == "#":
+            params["NameLessThan"] = "A"
+        elif letter:
+            params["NameStartsWith"] = letter
+        d = await self.get("/Items", **params)
+        return d.get("Items") or [], d.get("TotalRecordCount") or 0
+
+    async def ancestry(self, item_id, libs, depth=12):
+        """[item, parent, ..., library] for a folder. A folder's parent chain runs through the
+        library's physical folders (and the server root), not the library itself, so the walk
+        stops at the folder whose path is one of a library's locations and puts the library there."""
+        by_id = {l["ItemId"]: l for l in libs}
+        by_path = {loc.rstrip("/"): l for l in libs for loc in l.get("Locations") or []}
+        out = []
+        while item_id and len(out) < depth:
+            if item_id in by_id:
+                out.append({"Id": item_id, "Name": by_id[item_id]["Name"]})
+                break
+            it = await self.item(item_id)
+            if not it or it.get("Type") in ("AggregateFolder", "UserRootFolder"):
+                break
+            lib = by_path.get((it.get("Path") or "").rstrip("/"))
+            if lib:
+                if len(lib.get("Locations") or []) > 1:
+                    out.append(it)      # one of several folders of the library: keep it visible
+                out.append({"Id": lib["ItemId"], "Name": lib["Name"]})
+                break
+            out.append(it)
+            item_id = it.get("ParentId")
+        return out
+
+    async def image(self, item_id, kind="Primary", max_height=360):
+        """(bytes, content type) of an item's image, or None."""
+        async with self.client() as c:
+            r = await c.get(f"/Items/{item_id}/Images/{kind}", params={"maxHeight": max_height, "maxWidth": 640, "format": "Jpg", "quality": 85})
+            if r.status_code != 200:
+                return None
+            return r.content, r.headers.get("content-type", "image/jpeg")
+
     async def all_of_type(self, types):
         return await self.paged(IncludeItemTypes=types, Recursive="true", Fields="ProviderIds,ProductionYear",
                                 EnableImages="false")

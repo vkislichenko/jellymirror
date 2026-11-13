@@ -16,10 +16,10 @@ A FastAPI app with SQLite and a server-rendered UI, all in one container.
 
 | Thing | What it is |
 |---|---|
-| **Server** | A Jellyfin URL and an admin API key, plus *file access*: `local` (media mounted into the container), `ssh` (a host with rsync), or `none` (API only). *Path maps* translate the paths Jellyfin reports into paths jellymirror can reach. |
+| **Server** | A Jellyfin URL and an admin API key, upload/download speed limits, plus *file access*: `local` (media mounted into the container), `ssh` (a host with rsync), or `none` (API only). *Path maps* translate the paths Jellyfin reports into paths jellymirror can reach. |
 | **Person** | One viewer, linked to a user account on each server (Users page; "link users with the same name" does the obvious ones). |
 | **Title** (rule) | A series or movie on its source server. |
-| **Target** | A server the title syncs to: target folder (a library folder), path template, transfer method, delay, bandwidth limit. "Watch only" targets sync watch state for a title the server already has. |
+| **Target** | A server the title syncs to: target folder (a library folder), path template, transfer method, delay, speed limit. "Watch only" targets sync watch state for a title the server already has. |
 | **Job** | One copy or delete. Jobs can be paused, resumed, retried or cancelled. |
 
 ## How it works
@@ -54,6 +54,12 @@ lives in a hidden `.jellymirror-partial/` folder, which Jellyfin skips while sca
   (locally, or through `ssh cat >>`). It resumes too, and restarts if the server
   answers from the wrong offset.
 - `auto`: rsync when the source has file access, else the API.
+
+**Speed limits** are in Mbit/s. A server has an upload limit (when it is the source) and a
+download limit (when it receives files). Each is the server's total, split evenly between
+its copies running at the same time. A target can add its own limit on top; the lowest
+applies. API copies re-check their share every second. rsync copies take theirs when they
+start, so a copy that starts alone keeps the whole limit until it finishes.
 
 Every copy is size-checked, and the source must still have the planned size. Afterwards
 the target scans the changed folders, or the whole library when the title is new to it,

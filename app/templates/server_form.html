@@ -22,6 +22,14 @@
   <label>Path maps — one per line: <code>path as Jellyfin sees it = path for jellymirror</code> (local: inside this container; ssh: on the host)</label>
   <textarea name="path_maps" rows="4" placeholder="/media = /mnt/speed/media">{% for a, b in s.path_maps %}{{ a }} = {{ b }}
 {% endfor %}</textarea>
+  <div class="grid">
+    <div><label>Upload limit, Mbit/s — when this server is the source (0 = none)</label>
+      <input name="up_mbps" type="number" min="0" step="any" value="{{ s.up_kbps | mbps }}"></div>
+    <div><label>Download limit, Mbit/s — when this server receives files (0 = none)</label>
+      <input name="down_mbps" type="number" min="0" step="any" value="{{ s.down_kbps | mbps }}"></div>
+  </div>
+  <p class="small muted">Each limit is the total for the server, split evenly between its copies running at the same
+    time. A target's own limit still applies on top.</p>
   <p><label class="inline"><input type="checkbox" name="enabled" {{ 'checked' if s.enabled }}> Enabled</label></p>
   <div class="row"><button>Save and test</button><a class="btn ghost" href="/servers">Cancel</a></div>
 </form>

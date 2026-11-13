@@ -2,7 +2,7 @@
 {% block body %}
 <div class="row" style="justify-content:space-between"><h1>Servers</h1><a class="btn" href="/servers/new">Add server</a></div>
 <div class="card wrap"><table>
-<tr><th>Name</th><th>URL</th><th>File access</th><th>Path maps</th><th>Status</th></tr>
+<tr><th>Name</th><th>URL</th><th>File access</th><th>Path maps</th><th>Speed limits</th><th>Status</th></tr>
 {% for s in servers %}<tr>
   <td><a href="/servers/{{ s.id }}/edit">{{ s.name }}</a>{% if not s.enabled %} <span class="muted">(disabled)</span>{% endif %}</td>
   <td class="path">{{ s.url }}</td>
